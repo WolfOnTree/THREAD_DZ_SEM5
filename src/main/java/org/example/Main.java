@@ -1,55 +1,92 @@
 package org.example;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
+
+
+
 public class Main {
+    public static void time(Runnable operation){
+        long startTime = System.nanoTime();
+
+        operation.run();
+
+        long endTime = System.nanoTime();
+        long durationMs = (endTime - startTime) / 1_000_000;
+
+        System.out.println(durationMs);
+    }
+
+    public static void FilterStream(List<Integer> list) {
+        time(() ->
+                list.stream()
+                        .filter(n -> n % 2 == 0)
+                        .toList()
+        );
+    }
+
+    public static void AggregationStream(List<Integer> list) {
+        time(() ->
+                list.stream()
+                        .map(n -> n + 10)
+                        .toList()
+        );
+    }
+
+    public static void MultiplicationStream(List<Integer> list) {
+        time(() ->
+                list.stream()
+                        .mapToInt(Integer::intValue)
+                        .sum()
+        );
+    }
+
+    public static void FilterPStream(List<Integer> list) {
+        time(() ->
+                list.parallelStream()
+                        .filter(n -> n % 2 == 0)
+                        .toList()
+        );
+    }
+
+    public static void AggregationPStream(List<Integer> list) {
+        time(() ->
+                list.parallelStream()
+                        .map(n -> n + 10)
+                        .toList()
+        );
+    }
+
+    public static void MultiplicationPStream(List<Integer> list) {
+        time(() ->
+                list.parallelStream()
+                        .mapToInt(Integer::intValue)
+                        .sum()
+        );
+    }
+
     static void main() {
-        class Counter{
-            int value = 0;
+        int size = 1000000;
+        Random rand = new Random();
+        List<Integer> list = new ArrayList<>(size);
+
+        for(int i = 0; i<size; i++){
+            list.add(rand.nextInt(101));
         }
-        Counter counter = new Counter();
+        FilterStream(list); //16
+        FilterPStream(list); //35
 
-        //создаение потоков NEW
-        Thread thread1 = new Thread(() -> {
-            synchronized (counter){
-                try {
-                    IO.println("Поток 1 вывод counter " + counter.value);
-                    counter.value++;
-                    IO.println("Поток 1 засыпаю");
-                    Thread.sleep(5000); //блокировка монитора из за чего второй поток будет BLOCKED
-                    IO.println("Поток 1 проснулся");
-                    IO.println("Поток 1 освобождаю монитор");
-                    counter.wait(); //WAITING
-                    IO.println("Поток 1 ожидание 2, итоговый вывод: " + counter.value);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
+        AggregationStream(list); //16
+        AggregationPStream(list); //58
 
-            }
-        });
+        MultiplicationStream(list); //7
+        MultiplicationPStream(list); //15
+        //все результаты +- запускались по несколько раз
 
-        Thread thread2 = new Thread(() -> {
-            try{
-                Thread.sleep(1000);
-                synchronized (counter) {
-                    IO.println("Поток 2 вывод counter: " + counter.value);
-                    counter.value++;
-                    counter.notify();
-                }
-            }catch (InterruptedException e){
-                throw new RuntimeException(e);
-            }
-
-        });
-        //Потоки загружаются в очередь RUNNABLE
-        thread1.start();
-        thread2.start();
-
-        try{
-            thread1.join();
-            thread2.join();
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-
-        IO.println("потоки завершены"); //основной поток дождался завершения и теперь thread1 и thread2 TERMINATED
+        //во всех ситуациях последовательное выполнение привело к лучшему результату,
+        //потому как операция не слишком требовательна
+        //вывод параллелизм выгоден при сложных операциях или на крайне больших объёмах данных,
+        //потому как на разделение уходит больше ресурсов чем на работу
     }
 }
