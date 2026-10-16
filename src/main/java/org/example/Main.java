@@ -1,109 +1,104 @@
 package org.example;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
-class BoundedBuffer<T>{
-    private final ReentrantLock lock = new ReentrantLock();
-    private final Condition notEmpty = lock.newCondition();
-    private final Condition notFull = lock.newCondition();
+class safeStructure{
+    private  AtomicReference<String> atomicReference = new AtomicReference<>(null);
 
-    private final List<T> list;
-    private final Integer size;
+    public String get(){
+        String value = atomicReference.get();
 
-    BoundedBuffer(List<T> list, Integer size){
-        this.list = list;
-        this.size = size;
-    }
-
-    void put(T item){
-        lock.lock();
-        try {
-            while (size == list.size()) {
-                notFull.await();
-            }
-            list.add(item);
-            System.out.println("Добавлено элемент" + item);
-            notEmpty.signal();
-        }catch (InterruptedException e){
-            Thread.currentThread().interrupt();
-            System.out.println("ошибка!");
-        } finally {
-            lock.unlock();
+        if (value != null) {
+            return value;
         }
-    }
 
-    T take(){
-        lock.lock();
-        try {
-            while (list.isEmpty()) {
-                notEmpty.await();
-            }
-            var element = list.getFirst();
-            list.removeFirst();
-            System.out.println("взял элемент" + element);
-            notFull.signal();
-            return element;
-        }catch (InterruptedException e){
-            Thread.currentThread().interrupt();
-            System.out.println("ошибка!");
-        }finally {
-            lock.unlock();
+        String newValue = UUID.randomUUID().toString();
+
+        if (atomicReference.compareAndSet(null, newValue)) {
+            return newValue;
         }
-        return null;
+
+        return atomicReference.get();
     }
 }
 
+
+
 public class Main {
 
-    static void main() {
-        BoundedBuffer boundedBuffer = new BoundedBuffer<>(new ArrayList<Integer>(), 3);
-        Random rand = new Random();
+    volatile static boolean canWePass = true;
 
-        /*for(int i = 0; i<4; i++){
-            Thread thread = new Thread(() -> {
+    static class safeCountrer{
+        private static AtomicInteger counter = new AtomicInteger(0);
 
-                boundedBuffer.put(rand.nextInt());
-            });
-            thread.start();
+        public static void increment(){
+            counter.getAndIncrement();
         }
 
-        try {
-            Thread.sleep(3000);
-        }catch (InterruptedException e){
-            Thread.currentThread().interrupt();
-        }
-
-        for(int i = 0; i<4; i++){
-            Thread thread = new Thread(() -> {
-                boundedBuffer.take();
-            });
-            thread.start();
-        }*/
-
-
-        for(int i = 0; i<4; i++){
-            Thread thread = new Thread(() -> {
-
-                boundedBuffer.take();
-            });
-            thread.start();
-        }
-
-        try {
-            Thread.sleep(3000);
-        }catch (InterruptedException e){
-            Thread.currentThread().interrupt();
-        }
-
-        for(int i = 0; i<4; i++){
-            Thread thread = new Thread(() -> {
-                boundedBuffer.put(rand.nextInt());
-            });
-            thread.start();
+        public static Integer get(){
+            return counter.get();
         }
     }
+
+
+    static void main() {
+        //Task 1
+
+        new Thread(() -> {
+            while(canWePass){
+                try {
+                    System.out.println("Работаю");
+                    Thread.sleep(1000);
+                }catch (InterruptedException e){
+                    Thread.currentThread().interrupt();
+                }
+            }
+            System.out.println("закончил");
+        }).start();
+
+         new Thread(() -> {
+             try {
+                 Thread.sleep(5000);
+                 System.out.println("переключаю");
+                 canWePass = false;
+             }catch (InterruptedException e){
+                 Thread.currentThread().interrupt();
+             }
+         }).start();
+
+        //Task 2
+
+        ExecutorService executorService = Executors.newFixedThreadPool(4);
+
+        for(int i = 0; i < 10000; i++){
+                executorService.submit(() -> {
+                    safeCountrer.increment();
+                });
+        }
+
+        try {
+            Thread.sleep(1000);
+        }catch(InterruptedException e){
+            Thread.currentThread().interrupt();
+        }
+
+        executorService.shutdown();
+
+        System.out.println(safeCountrer.get());
+        //Task 3
+
+        safeStructure safeStructure = new safeStructure();
+
+        for(int i = 0; i < 4; i++){
+            new Thread(() ->{
+                System.out.println(safeStructure.get());
+            }).start();
+        }
+
+    }
+
 }
